@@ -1,5 +1,5 @@
 <template>
-  <div class="movie-card">
+  <div class="movie-card" :class="statusClass">
     <div class="poster-wrap">
       <img
         :src="movie.poster_url || 'https://via.placeholder.com/165x220?text=No+Poster'"
@@ -7,7 +7,28 @@
         loading="lazy"
         @error="onImgError"
       />
+      <a class="ext-link" :href="movie.movie_url" target="_blank" rel="noopener" title="Open on 5Movierulz">&#8599;</a>
       <div class="badge" v-if="movie.quality">{{ movie.quality }}</div>
+    </div>
+    <div class="status-bar">
+      <button
+        class="status-btn watched"
+        :class="{ active: movie.status === 'watched' }"
+        @click.stop="setStatus('watched')"
+        title="Watched"
+      >&#10003;</button>
+      <button
+        class="status-btn want"
+        :class="{ active: movie.status === 'want_to_watch' }"
+        @click.stop="setStatus('want_to_watch')"
+        title="Want to Watch"
+      >&#9733;</button>
+      <button
+        class="status-btn nope"
+        :class="{ active: movie.status === 'not_interested' }"
+        @click.stop="setStatus('not_interested')"
+        title="Not Interested"
+      >&#10007;</button>
     </div>
     <div class="movie-info">
       <h3>{{ displayTitle }}</h3>
@@ -18,6 +39,8 @@
 </template>
 
 <script>
+const API_BASE = '/api';
+
 export default {
   name: 'MovieCard',
   props: {
@@ -26,12 +49,30 @@ export default {
   computed: {
     displayTitle() {
       return this.movie.title.replace(/ \(\d{4}\)/, '').replace(/ \[.*?\]/, '');
+    },
+    statusClass() {
+      return this.movie.status ? 'status-' + this.movie.status : '';
     }
   },
   methods: {
     onImgError(e) {
       e.target.src = 'https://via.placeholder.com/165x220?text=No+Poster';
-    }
+    },
+    async setStatus(status) {
+      const prev = this.movie.status;
+      const newStatus = prev === status ? null : status;
+      this.movie.status = newStatus;
+      try {
+        const res = await fetch(`${API_BASE}/movies/${this.movie.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) throw new Error();
+      } catch {
+        this.movie.status = prev;
+      }
+    },
   }
 }
 </script>
@@ -47,6 +88,9 @@ export default {
   transform: translateY(-4px);
   box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
+.movie-card.status-watched { outline: 2px solid #27ae60; }
+.movie-card.status-want_to_watch { outline: 2px solid #f39c12; }
+.movie-card.status-not_interested { opacity: 0.5; }
 .poster-wrap {
   position: relative;
   aspect-ratio: 165 / 220;
@@ -59,6 +103,23 @@ export default {
   object-fit: cover;
   display: block;
 }
+.ext-link {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.6);
+  color: #ccc;
+  text-decoration: none;
+  font-size: 16px;
+  border-radius: 4px;
+  transition: background 0.15s;
+}
+.ext-link:hover { background: #d24d04; color: #fff; }
 .badge {
   position: absolute;
   top: 8px;
@@ -71,6 +132,35 @@ export default {
   border-radius: 3px;
   text-transform: uppercase;
 }
+.status-bar {
+  display: flex;
+  margin: 8px 8px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #15171d;
+}
+.status-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: none;
+  padding: 8px 4px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  background: transparent;
+  color: #555;
+  transition: all 0.15s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.status-btn + .status-btn { border-left: 1px solid #22252e; }
+.status-btn:hover { background: #1e212a; color: #999; }
+.status-btn.watched.active { background: #1b6b38; color: #6fcf7f; }
+.status-btn.want.active { background: #8a630d; color: #f7dc6f; }
+.status-btn.nope.active { background: #922b21; color: #f1948a; }
 .movie-info {
   padding: 10px;
 }

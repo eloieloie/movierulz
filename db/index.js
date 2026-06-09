@@ -15,26 +15,48 @@ async function open() {
   if (fs.existsSync(DB_PATH)) {
     const buffer = fs.readFileSync(DB_PATH);
     db = new SQL.Database(buffer);
+    migrate();
   } else {
     db = new SQL.Database();
-    db.run(`
-      CREATE TABLE IF NOT EXISTS movies (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        year INTEGER,
-        quality TEXT,
-        language TEXT,
-        category TEXT,
-        poster_url TEXT,
-        movie_url TEXT UNIQUE,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-    db.run('CREATE INDEX IF NOT EXISTS idx_movies_category ON movies(category)');
-    db.run('CREATE INDEX IF NOT EXISTS idx_movies_year ON movies(year)');
+    createTables();
     save();
   }
   return db;
+}
+
+function createTables() {
+  db.run(`
+    CREATE TABLE IF NOT EXISTS movies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      year INTEGER,
+      quality TEXT,
+      language TEXT,
+      category TEXT,
+      poster_url TEXT,
+      movie_url TEXT UNIQUE,
+      genres TEXT,
+      synopsis TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.run('CREATE INDEX IF NOT EXISTS idx_movies_category ON movies(category)');
+  db.run('CREATE INDEX IF NOT EXISTS idx_movies_year ON movies(year)');
+}
+
+function migrate() {
+  const result = db.exec("PRAGMA table_info(movies)");
+  const cols = result[0] ? result[0].values.map(v => v[1]) : [];
+  if (!cols.includes('genres')) {
+    db.run("ALTER TABLE movies ADD COLUMN genres TEXT");
+  }
+  if (!cols.includes('synopsis')) {
+    db.run("ALTER TABLE movies ADD COLUMN synopsis TEXT");
+  }
+  if (!cols.includes('status')) {
+    db.run("ALTER TABLE movies ADD COLUMN status TEXT");
+  }
+  save();
 }
 
 function save() {
@@ -75,17 +97,22 @@ function upsertMovie(movie) {
   const existing = get('SELECT id FROM movies WHERE movie_url = ?', [movie.movie_url]);
   if (existing) {
     db.run(
-      `UPDATE movies SET title=?, year=?, quality=?, language=?, category=?, poster_url=?
+      `UPDATE movies SET title=?, year=?, quality=?, language=?, category=?, poster_url=?, genres=?, synopsis=?
        WHERE movie_url=?`,
-      [movie.title, movie.year, movie.quality, movie.language, movie.category, movie.poster_url, movie.movie_url]
+      [movie.title, movie.year, movie.quality, movie.language, movie.category, movie.poster_url, movie.genres || null, movie.synopsis || null, movie.movie_url]
     );
   } else {
     db.run(
-      `INSERT INTO movies (title, year, quality, language, category, poster_url, movie_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [movie.title, movie.year, movie.quality, movie.language, movie.category, movie.poster_url, movie.movie_url]
+      `INSERT INTO movies (title, year, quality, language, category, poster_url, movie_url, genres, synopsis)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [movie.title, movie.year, movie.quality, movie.language, movie.category, movie.poster_url, movie.movie_url, movie.genres || null, movie.synopsis || null]
     );
   }
+  save();
+}
+
+function updateMovieDetail(movieUrl, genres, synopsis) {
+  db.run('UPDATE movies SET genres=?, synopsis=? WHERE movie_url=?', [genres || null, synopsis || null, movieUrl]);
   save();
 }
 
@@ -103,4 +130,14 @@ function close() {
   if (db) { save(); db.close(); db = null; }
 }
 
-module.exports = { open, getAllMovies, getMovie, upsertMovie, clearMovies, close, getCategories };
+function updateMovieStatus(movieUrl, status) {
+  db.run('UPDATE movies SET status=? WHERE movie_url=?', [status || null, movieUrl]);
+  save();
+}
+
+function updateMovieStatusById(id, status) {
+  db.run('UPDATE movies SET status=? WHERE id=?', [status || null, id]);
+  save();
+}
+
+module.exports = { open, getAllMovies, getMovie, upsertMovie, updateMovieDetail, clearMovies, close, getCategories, updateMovieStatus, updateMovieStatusById };

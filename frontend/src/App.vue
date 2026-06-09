@@ -29,6 +29,24 @@
         <option value="">All Qualities</option>
         <option v-for="q in filters.qualities" :key="q" :value="q">{{ q }}</option>
       </select>
+      <select v-model="filterGenre" @change="fetchMovies()">
+        <option value="">All Genres</option>
+        <option v-for="g in filters.genres" :key="g" :value="g">{{ g }}</option>
+      </select>
+      <select v-model="filterStatus" @change="fetchMovies()">
+        <option value="">All Status</option>
+        <option value="none">Unmarked</option>
+        <option value="watched">Watched</option>
+        <option value="want_to_watch">Want to Watch</option>
+        <option value="not_interested">Not Interested</option>
+      </select>
+      <select v-model="sortOrder" @change="fetchMovies()">
+        <option value="">Newest First</option>
+        <option value="year_desc">Year: Newest First</option>
+        <option value="year_asc">Year: Oldest First</option>
+        <option value="title_asc">Title: A-Z</option>
+        <option value="title_desc">Title: Z-A</option>
+      </select>
     </div>
 
     <div id="content">
@@ -38,11 +56,11 @@
         <div class="section-title" v-if="!activeCategory">
           <h2>Featured Movies Free</h2>
         </div>
+        <div class="movie-count">Showing {{ movies.length }} movie{{ movies.length === 1 ? '' : 's' }}</div>
         <div class="movie-grid">
           <MovieCard v-for="movie in movies" :key="movie.id" :movie="movie" />
           <div v-if="!movies.length && !loading" class="no-movies">No movies found. Run the scraper first: <code>npm run scrape</code></div>
         </div>
-        <div class="movie-count" v-if="movies.length">Showing {{ movies.length }} movies</div>
       </template>
     </div>
 
@@ -65,11 +83,14 @@ export default {
     return {
       movies: [],
       categories: [],
-      filters: { years: [], qualities: [], languages: [] },
+      filters: { years: [], qualities: [], languages: [], genres: [] },
       activeCategory: null,
       filterYear: '',
       filterLanguage: '',
       filterQuality: '',
+      filterGenre: '',
+      filterStatus: '',
+      sortOrder: '',
       loading: true,
       error: null,
     }
@@ -88,6 +109,9 @@ export default {
       if (this.filterYear) params.set('year', this.filterYear);
       if (this.filterLanguage) params.set('language', this.filterLanguage);
       if (this.filterQuality) params.set('quality', this.filterQuality);
+      if (this.filterGenre) params.set('genre', this.filterGenre);
+      if (this.filterStatus) params.set('status', this.filterStatus);
+      if (this.sortOrder) params.set('sort', this.sortOrder);
       const qs = params.toString();
       try {
         const res = await fetch(`${API_BASE}/movies${qs ? '?' + qs : ''}`);
