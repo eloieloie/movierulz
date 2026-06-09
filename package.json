@@ -1,0 +1,14 @@
+{
+  "name": "movierulz",
+  "private": true,
+  "scripts": {
+    "install:db": "cd db && npm install",
+    "install:scraper": "cd scraper && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "install:all": "npm run install:db && npm run install:scraper && npm run install:frontend",
+    "scrape": "cd scraper && node index.js",
+    "dev": "cd frontend && npm run dev",
+    "server": "cd frontend && node server.js",
+    "build": "cd frontend && npm run build"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "name": "movierulz-db",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "dependencies": {
+    "sql.js": "^1.11.0"
+  }
+}
