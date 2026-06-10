@@ -63,7 +63,7 @@
         <div class="movie-count">Showing {{ movies.length }} movie{{ movies.length === 1 ? '' : 's' }}{{ total ? ' of ' + total : '' }}</div>
         <div class="movie-grid">
           <MovieCard v-for="movie in movies" :key="movie.id" :movie="movie" />
-          <div v-if="!movies.length && !loading" class="no-movies">No movies found. Run the scraper first: <code>npm run scrape</code></div>
+          <div v-if="!movies.length && !loading" class="no-movies">No movies found.</div>
         </div>
         <div v-if="hasMore" class="load-more-wrap">
           <button class="load-more" @click="loadMore" :disabled="loadingMore">
@@ -82,8 +82,7 @@
 
 <script>
 import MovieCard from './components/MovieCard.vue'
-
-const API_BASE = import.meta.env.VITE_API_BASE || '/api';
+import { supabase } from './supabase.js'
 
 export default {
   name: 'App',
@@ -93,6 +92,7 @@ export default {
       movies: [],
       total: 0,
       page: 1,
+      perPage: 100,
       loading: true,
       loadingMore: false,
       error: null,
@@ -130,24 +130,33 @@ export default {
     async fetchMovies() {
       this.loading = true;
       this.error = null;
-      const params = new URLSearchParams();
-      params.set('page', this.page);
-      if (this.activeCategory) params.set('category', this.activeCategory);
-      if (this.filterYear) params.set('year', this.filterYear);
-      if (this.filterLanguage) params.set('language', this.filterLanguage);
-      if (this.filterQuality.length) params.set('quality', this.filterQuality.join(','));
-      if (this.filterGenre) params.set('genre', this.filterGenre);
-      if (this.filterStatus) params.set('status', this.filterStatus);
-      if (this.sortOrder) params.set('sort', this.sortOrder);
-      const qs = params.toString();
       try {
-        const res = await fetch(`${API_BASE}/movies${qs ? '?' + qs : ''}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const json = await res.json();
-        this.movies = this.page === 1 ? json.data : [...this.movies, ...json.data];
-        this.total = json.total;
+        const offset = (this.page - 1) * this.perPage;
+        let query = supabase.from('movies').select('*', { count: 'exact' });
+
+        if (this.activeCategory) query = query.eq('category', this.activeCategory);
+        if (this.filterYear) query = query.eq('year', parseInt(this.filterYear));
+        if (this.filterLanguage) query = query.eq('language', this.filterLanguage);
+        if (this.filterGenre) query = query.ilike('genres', `%${this.filterGenre}%`);
+        if (this.filterStatus === 'none') query = query.is('status', null);
+        else if (this.filterStatus) query = query.eq('status', this.filterStatus);
+        if (this.filterQuality.length) query = query.in('quality', this.filterQuality);
+
+        switch (this.sortOrder) {
+          case 'year_asc': query = query.order('year', { ascending: true }); break;
+          case 'year_desc': query = query.order('year', { ascending: false }); break;
+          case 'title_asc': query = query.order('title', { ascending: true }); break;
+          case 'title_desc': query = query.order('title', { ascending: false }); break;
+          default: query = query.order('created_at', { ascending: false });
+        }
+        query = query.order('id', { ascending: true });
+
+        const { data, error, count } = await query.range(offset, offset + this.perPage - 1);
+        if (error) throw error;
+        this.movies = this.page === 1 ? (data || []) : [...this.movies, ...(data || [])];
+        this.total = count || 0;
       } catch (err) {
-        this.error = 'Failed to load movies. Make sure the server is running.';
+        this.error = 'Failed to load movies.';
         this.movies = [];
       } finally {
         this.loading = false;
@@ -167,14 +176,59 @@ export default {
     },
     async fetchCategories() {
       try {
-        const res = await fetch(`${API_BASE}/categories`);
-        this.categories = await res.json();
+        const all = [];
+        let from = 0;
+        const step = 1000;
+        while (true) {
+          const { data, error } = await supabase
+            .from('movies')
+            .select('category')
+            .not('category', 'is', null)
+            .range(from, from + step - 1);
+          if (error) throw error;
+          if (!data.length) break;
+          all.push(...data);
+          if (data.length < step) break;
+          from += step;
+        }
+        this.categories = [...new Set(all.map(r => r.category))].filter(Boolean).sort();
       } catch (_) {}
     },
     async fetchFilters() {
       try {
-        const res = await fetch(`${API_BASE}/filters`);
-        this.filters = await res.json();
+        const step = 1000;
+        const fetchCol = async (col) => {
+          const all = [];
+          let from = 0;
+          while (true) {
+            const { data, error } = await supabase
+              .from('movies')
+              .select(col)
+              .not(col, 'is', null)
+              .range(from, from + step - 1);
+            if (error) throw error;
+            if (!data.length) break;
+            all.push(...data);
+            if (data.length < step) break;
+            from += step;
+          }
+          return all;
+        };
+
+        const [yearRows, qualityRows, languageRows, genreRows] = await Promise.all([
+          fetchCol('year'),
+          fetchCol('quality'),
+          fetchCol('language'),
+          fetchCol('genres'),
+        ]);
+
+        this.filters.years = [...new Set(yearRows.map(r => r.year))].filter(Boolean).sort((a, b) => b - a);
+        this.filters.qualities = [...new Set(qualityRows.map(r => r.quality))].filter(Boolean).sort();
+        this.filters.languages = [...new Set(languageRows.map(r => r.language))].filter(Boolean).sort();
+
+        const genreSet = new Set();
+        genreRows.forEach(r => (r.genres || '').split(',').forEach(g => { const t = g.trim(); if (t) genreSet.add(t); }));
+        this.filters.genres = [...genreSet].sort();
       } catch (_) {}
     },
   },

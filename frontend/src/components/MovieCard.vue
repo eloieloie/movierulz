@@ -39,7 +39,7 @@
 </template>
 
 <script>
-const API_BASE = '/api';
+import { supabase } from '../supabase.js'
 
 export default {
   name: 'MovieCard',
@@ -62,16 +62,8 @@ export default {
       const prev = this.movie.status;
       const newStatus = prev === status ? null : status;
       this.movie.status = newStatus;
-      try {
-        const res = await fetch(`${API_BASE}/movies/${this.movie.id}/status`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: newStatus }),
-        });
-        if (!res.ok) throw new Error();
-      } catch {
-        this.movie.status = prev;
-      }
+      const { error } = await supabase.from('movies').update({ status: newStatus }).eq('id', this.movie.id);
+      if (error) this.movie.status = prev;
     },
   }
 }
