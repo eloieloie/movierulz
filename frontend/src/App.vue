@@ -17,6 +17,17 @@
     </nav>
 
     <div class="filter-bar" v-if="filters.years.length || filters.languages.length">
+      <div class="search-wrap">
+        <input
+          class="search-input"
+          type="text"
+          v-model="searchQuery"
+          placeholder="Search movies..."
+          @keyup.enter="resetAndFetch()"
+          @change="resetAndFetch()"
+        />
+        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''; resetAndFetch()">&times;</button>
+      </div>
       <select v-model="filterYear" @change="resetAndFetch()">
         <option value="">All Years</option>
         <option v-for="y in filters.years" :key="y" :value="y">{{ y }}</option>
@@ -88,6 +99,7 @@ const FILTER_KEY = 'movierulz-filters'
 
 const DEFAULTS = {
   activeCategory: null,
+  searchQuery: '',
   filterYear: '',
   filterLanguage: '',
   filterQuality: [],
@@ -120,6 +132,7 @@ export default {
       categories: [],
       filters: { years: [], qualities: [], languages: [], genres: [] },
       activeCategory: saved.activeCategory,
+      searchQuery: saved.searchQuery || '',
       filterYear: saved.filterYear,
       filterLanguage: saved.filterLanguage,
       filterQuality: saved.filterQuality,
@@ -146,6 +159,7 @@ export default {
       try {
         localStorage.setItem(FILTER_KEY, JSON.stringify({
           activeCategory: this.activeCategory,
+          searchQuery: this.searchQuery,
           filterYear: this.filterYear,
           filterLanguage: this.filterLanguage,
           filterQuality: this.filterQuality,
@@ -169,6 +183,7 @@ export default {
         const offset = (this.page - 1) * this.perPage;
         let query = supabase.from('movies').select('*', { count: 'exact' });
 
+        if (this.searchQuery) query = query.ilike('title', `%${this.searchQuery}%`);
         if (this.activeCategory) query = query.eq('category', this.activeCategory);
         if (this.filterYear) query = query.eq('year', parseInt(this.filterYear));
         if (this.filterLanguage) query = query.eq('language', this.filterLanguage);
@@ -327,6 +342,43 @@ body {
   flex-wrap: wrap;
   align-items: center;
 }
+.search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.search-input {
+  background: #1a1c22;
+  color: #ccc;
+  border: 1px solid #2a2d35;
+  padding: 6px 12px 6px 28px;
+  border-radius: 4px;
+  font-size: 13px;
+  width: 180px;
+  outline: none;
+}
+.search-input:focus { border-color: #d24d04; }
+.search-input::placeholder { color: #555; }
+.search-wrap::before {
+  content: '\1F50D';
+  position: absolute;
+  left: 8px;
+  font-size: 11px;
+  color: #555;
+  pointer-events: none;
+}
+.search-clear {
+  position: absolute;
+  right: 4px;
+  background: none;
+  border: none;
+  color: #888;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.search-clear:hover { color: #ccc; }
 .filter-bar select {
   background: #1a1c22;
   color: #ccc;
