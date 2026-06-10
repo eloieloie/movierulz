@@ -1,7 +1,7 @@
 <template>
   <div id="app-root">
     <header id="branding">
-      <h1 id="site-title"><a href="/">MovieRulz</a></h1>
+      <h1 id="site-title"><a :href="basePath">MovieRulz</a></h1>
       <p id="site-description">Latest Indian Movies — Telugu, Tamil, Malayalam &amp; Hindi</p>
     </header>
 
@@ -83,7 +83,7 @@
 <script>
 import MovieCard from './components/MovieCard.vue'
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 export default {
   name: 'App',
@@ -110,6 +110,9 @@ export default {
   computed: {
     hasMore() {
       return this.total > this.movies.length;
+    },
+    basePath() {
+      return import.meta.env.VITE_BASE || '/';
     }
   },
   mounted() {

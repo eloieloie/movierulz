@@ -1,0 +1,33 @@
+name: Scrape movies
+
+on:
+  workflow_dispatch:
+    inputs:
+      years:
+        description: 'Year range (e.g. 2026-2015)'
+        required: false
+        default: '2026-2015'
+        type: string
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: scraper
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scraper/package-lock.json
+
+      - run: npm ci
+
+      - name: Run scraper
+        run: node index.js --years="${{ github.event.inputs.years }}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
