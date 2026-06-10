@@ -84,10 +84,31 @@
 import MovieCard from './components/MovieCard.vue'
 import { supabase } from './supabase.js'
 
+const FILTER_KEY = 'movierulz-filters'
+
+const DEFAULTS = {
+  activeCategory: null,
+  filterYear: '',
+  filterLanguage: '',
+  filterQuality: [],
+  filterGenre: '',
+  filterStatus: '',
+  sortOrder: '',
+}
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(FILTER_KEY)
+    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) }
+  } catch {}
+  return { ...DEFAULTS }
+}
+
 export default {
   name: 'App',
   components: { MovieCard },
   data() {
+    const saved = loadSaved()
     return {
       movies: [],
       total: 0,
@@ -98,13 +119,13 @@ export default {
       error: null,
       categories: [],
       filters: { years: [], qualities: [], languages: [], genres: [] },
-      activeCategory: null,
-      filterYear: '',
-      filterLanguage: '',
-      filterQuality: [],
-      filterGenre: '',
-      filterStatus: '',
-      sortOrder: '',
+      activeCategory: saved.activeCategory,
+      filterYear: saved.filterYear,
+      filterLanguage: saved.filterLanguage,
+      filterQuality: saved.filterQuality,
+      filterGenre: saved.filterGenre,
+      filterStatus: saved.filterStatus,
+      sortOrder: saved.sortOrder,
     }
   },
   computed: {
@@ -121,10 +142,24 @@ export default {
     this.fetchMovies();
   },
   methods: {
+    saveFilters() {
+      try {
+        localStorage.setItem(FILTER_KEY, JSON.stringify({
+          activeCategory: this.activeCategory,
+          filterYear: this.filterYear,
+          filterLanguage: this.filterLanguage,
+          filterQuality: this.filterQuality,
+          filterGenre: this.filterGenre,
+          filterStatus: this.filterStatus,
+          sortOrder: this.sortOrder,
+        }))
+      } catch {}
+    },
     resetAndFetch() {
       this.movies = [];
       this.total = 0;
       this.page = 1;
+      this.saveFilters();
       this.fetchMovies();
     },
     async fetchMovies() {
@@ -172,6 +207,7 @@ export default {
       const idx = this.filterQuality.indexOf(q);
       if (idx === -1) this.filterQuality.push(q);
       else this.filterQuality.splice(idx, 1);
+      this.saveFilters();
       this.resetAndFetch();
     },
     async fetchCategories() {
