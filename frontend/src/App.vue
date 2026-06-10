@@ -8,39 +8,43 @@
     <nav id="menu" v-if="categories.length">
       <ul id="primary-menu">
         <li>
-          <a href="#" :class="{ active: !activeCategory }" @click.prevent="activeCategory = null; fetchMovies()">All</a>
+          <a href="#" :class="{ active: !activeCategory }" @click.prevent="activeCategory = null; resetAndFetch()">All</a>
         </li>
         <li v-for="cat in categories" :key="cat">
-          <a href="#" :class="{ active: activeCategory === cat }" @click.prevent="activeCategory = cat; fetchMovies()">{{ cat }}</a>
+          <a href="#" :class="{ active: activeCategory === cat }" @click.prevent="activeCategory = cat; resetAndFetch()">{{ cat }}</a>
         </li>
       </ul>
     </nav>
 
     <div class="filter-bar" v-if="filters.years.length || filters.languages.length">
-      <select v-model="filterYear" @change="fetchMovies()">
+      <select v-model="filterYear" @change="resetAndFetch()">
         <option value="">All Years</option>
         <option v-for="y in filters.years" :key="y" :value="y">{{ y }}</option>
       </select>
-      <select v-model="filterLanguage" @change="fetchMovies()">
+      <select v-model="filterLanguage" @change="resetAndFetch()">
         <option value="">All Languages</option>
         <option v-for="l in filters.languages" :key="l" :value="l">{{ l }}</option>
       </select>
-      <select v-model="filterQuality" @change="fetchMovies()">
-        <option value="">All Qualities</option>
-        <option v-for="q in filters.qualities" :key="q" :value="q">{{ q }}</option>
-      </select>
-      <select v-model="filterGenre" @change="fetchMovies()">
+      <div class="chip-group" v-if="filters.qualities.length">
+        <button
+          v-for="q in filters.qualities" :key="q"
+          class="chip"
+          :class="{ active: filterQuality.includes(q) }"
+          @click="toggleQuality(q)"
+        >{{ q }}</button>
+      </div>
+      <select v-model="filterGenre" @change="resetAndFetch()">
         <option value="">All Genres</option>
         <option v-for="g in filters.genres" :key="g" :value="g">{{ g }}</option>
       </select>
-      <select v-model="filterStatus" @change="fetchMovies()">
+      <select v-model="filterStatus" @change="resetAndFetch()">
         <option value="">All Status</option>
         <option value="none">Unmarked</option>
         <option value="watched">Watched</option>
         <option value="want_to_watch">Want to Watch</option>
         <option value="not_interested">Not Interested</option>
       </select>
-      <select v-model="sortOrder" @change="fetchMovies()">
+      <select v-model="sortOrder" @change="resetAndFetch()">
         <option value="">Newest First</option>
         <option value="year_desc">Year: Newest First</option>
         <option value="year_asc">Year: Oldest First</option>
@@ -50,16 +54,21 @@
     </div>
 
     <div id="content">
-      <div v-if="loading" class="loading">Loading movies...</div>
+      <div v-if="loading && !movies.length" class="loading">Loading movies...</div>
       <div v-else-if="error" class="error">{{ error }}</div>
       <template v-else>
         <div class="section-title" v-if="!activeCategory">
           <h2>Featured Movies Free</h2>
         </div>
-        <div class="movie-count">Showing {{ movies.length }} movie{{ movies.length === 1 ? '' : 's' }}</div>
+        <div class="movie-count">Showing {{ movies.length }} movie{{ movies.length === 1 ? '' : 's' }}{{ total ? ' of ' + total : '' }}</div>
         <div class="movie-grid">
           <MovieCard v-for="movie in movies" :key="movie.id" :movie="movie" />
           <div v-if="!movies.length && !loading" class="no-movies">No movies found. Run the scraper first: <code>npm run scrape</code></div>
+        </div>
+        <div v-if="hasMore" class="load-more-wrap">
+          <button class="load-more" @click="loadMore" :disabled="loadingMore">
+            {{ loadingMore ? 'Loading...' : 'Show More' }}
+          </button>
         </div>
       </template>
     </div>
@@ -82,17 +91,25 @@ export default {
   data() {
     return {
       movies: [],
+      total: 0,
+      page: 1,
+      loading: true,
+      loadingMore: false,
+      error: null,
       categories: [],
       filters: { years: [], qualities: [], languages: [], genres: [] },
       activeCategory: null,
       filterYear: '',
       filterLanguage: '',
-      filterQuality: '',
+      filterQuality: [],
       filterGenre: '',
       filterStatus: '',
       sortOrder: '',
-      loading: true,
-      error: null,
+    }
+  },
+  computed: {
+    hasMore() {
+      return this.total > this.movies.length;
     }
   },
   mounted() {
@@ -101,14 +118,21 @@ export default {
     this.fetchMovies();
   },
   methods: {
+    resetAndFetch() {
+      this.movies = [];
+      this.total = 0;
+      this.page = 1;
+      this.fetchMovies();
+    },
     async fetchMovies() {
       this.loading = true;
       this.error = null;
       const params = new URLSearchParams();
+      params.set('page', this.page);
       if (this.activeCategory) params.set('category', this.activeCategory);
       if (this.filterYear) params.set('year', this.filterYear);
       if (this.filterLanguage) params.set('language', this.filterLanguage);
-      if (this.filterQuality) params.set('quality', this.filterQuality);
+      if (this.filterQuality.length) params.set('quality', this.filterQuality.join(','));
       if (this.filterGenre) params.set('genre', this.filterGenre);
       if (this.filterStatus) params.set('status', this.filterStatus);
       if (this.sortOrder) params.set('sort', this.sortOrder);
@@ -116,13 +140,27 @@ export default {
       try {
         const res = await fetch(`${API_BASE}/movies${qs ? '?' + qs : ''}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        this.movies = await res.json();
+        const json = await res.json();
+        this.movies = this.page === 1 ? json.data : [...this.movies, ...json.data];
+        this.total = json.total;
       } catch (err) {
         this.error = 'Failed to load movies. Make sure the server is running.';
         this.movies = [];
       } finally {
         this.loading = false;
       }
+    },
+    async loadMore() {
+      this.loadingMore = true;
+      this.page++;
+      await this.fetchMovies();
+      this.loadingMore = false;
+    },
+    toggleQuality(q) {
+      const idx = this.filterQuality.indexOf(q);
+      if (idx === -1) this.filterQuality.push(q);
+      else this.filterQuality.splice(idx, 1);
+      this.resetAndFetch();
     },
     async fetchCategories() {
       try {
@@ -194,6 +232,7 @@ body {
   gap: 10px;
   margin: 10px 0 20px;
   flex-wrap: wrap;
+  align-items: center;
 }
 .filter-bar select {
   background: #1a1c22;
@@ -205,6 +244,19 @@ body {
   cursor: pointer;
 }
 .filter-bar select:focus { outline: none; border-color: #d24d04; }
+.chip-group { display: flex; gap: 4px; flex-wrap: wrap; }
+.chip {
+  background: #1a1c22;
+  color: #888;
+  border: 1px solid #2a2d35;
+  padding: 5px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.chip:hover { border-color: #555; color: #ccc; }
+.chip.active { background: #d24d04; color: #fff; border-color: #d24d04; }
 .section-title h2 {
   font-size: 18px;
   color: #e0e0e0;
@@ -225,11 +277,27 @@ body {
 .error { color: #e74c3c; }
 .no-movies code { background: #1a1c22; padding: 2px 6px; border-radius: 3px; }
 .movie-count {
-  text-align: center;
+  text-align: left;
   color: #666;
   font-size: 12px;
+  padding: 0 0 10px;
+}
+.load-more-wrap {
+  text-align: center;
   padding: 20px 0;
 }
+.load-more {
+  background: #1a1c22;
+  color: #ccc;
+  border: 1px solid #2a2d35;
+  padding: 10px 30px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.load-more:hover { background: #2a2d35; border-color: #555; }
+.load-more:disabled { opacity: 0.5; cursor: default; }
 #colophon {
   text-align: center;
   padding: 30px 0;

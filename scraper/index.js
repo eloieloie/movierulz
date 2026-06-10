@@ -1,9 +1,10 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
-const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
 
-const dbPath = path.resolve(__dirname, '..', 'db', 'index.js');
-const db = require(dbPath);
+const supabaseUrl = process.env.SUPABASE_URL || 'https://ezcnelnuphfyipcsifnv.supabase.co';
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImV6Y25lbG51cGhmeWlwY3NpZm52Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA2NTkwMDAsImV4cCI6MjA5NjIzNTAwMH0.Q1fs1G99kJtoWcc9mUR4YdyHDo2LbEl0A1uGmyOGDEA';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const BASE_URL = 'https://www.5movierulz.discount';
 const CONCURRENCY = 3;
@@ -89,6 +90,34 @@ async function scrapeMovieDetail(url) {
   }
 }
 
+async function upsertMovie(movie) {
+  const { data: existing } = await supabase.from('movies').select('id, genres, synopsis').eq('movie_url', movie.movie_url).maybeSingle();
+  if (existing) {
+    const updates = {};
+    if (movie.genres && !existing.genres) updates.genres = movie.genres;
+    if (movie.synopsis && !existing.synopsis) updates.synopsis = movie.synopsis;
+    if (Object.keys(updates).length) {
+      await supabase.from('movies').update(updates).eq('movie_url', movie.movie_url);
+    }
+  } else {
+    await supabase.from('movies').insert({
+      title: movie.title,
+      year: movie.year,
+      quality: movie.quality,
+      language: movie.language,
+      category: movie.category,
+      poster_url: movie.poster_url,
+      movie_url: movie.movie_url,
+      genres: movie.genres || null,
+      synopsis: movie.synopsis || null,
+    });
+  }
+}
+
+async function updateMovieDetail(movieUrl, genres, synopsis) {
+  await supabase.from('movies').update({ genres, synopsis }).eq('movie_url', movieUrl);
+}
+
 async function scrapeDetails(movies) {
   console.log(`\nFetching details for ${movies.length} movies (concurrency: ${CONCURRENCY})...`);
   let done = 0;
@@ -98,7 +127,7 @@ async function scrapeDetails(movies) {
     for (let j = 0; j < batch.length; j++) {
       const detail = results[j];
       if (detail.genres || detail.synopsis) {
-        db.updateMovieDetail(batch[j].movie_url, detail.genres, detail.synopsis);
+        await updateMovieDetail(batch[j].movie_url, detail.genres, detail.synopsis);
       }
     }
     done += batch.length;
@@ -108,7 +137,6 @@ async function scrapeDetails(movies) {
 
 async function scrape() {
   console.log('=== MovieRulz Scraper ===\n');
-  await db.open();
 
   const args = process.argv.slice(2);
   const categoryArg = args.find(a => a.startsWith('--category='));
@@ -151,7 +179,7 @@ async function scrape() {
   let inserted = 0;
   for (const movie of allMovies) {
     try {
-      db.upsertMovie(movie);
+      await upsertMovie(movie);
       inserted++;
     } catch (err) {
       console.error(`  Error: "${movie.title}": ${err.message}`);
@@ -161,12 +189,10 @@ async function scrape() {
 
   await scrapeDetails(allMovies);
 
-  db.close();
   console.log('\nDone!');
 }
 
 scrape().catch(err => {
   console.error('Scraper failed:', err.message);
-  if (db) db.close();
   process.exit(1);
 });
