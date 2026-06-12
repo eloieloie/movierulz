@@ -91,27 +91,38 @@ async function scrapeMovieDetail(url) {
 }
 
 async function upsertMovie(movie) {
-  const { data: existing } = await supabase.from('movies').select('id, genres, synopsis').eq('movie_url', movie.movie_url).maybeSingle();
+  const { data: existing } = await supabase.from('movies').select('id, genres, synopsis, movie_url').eq('movie_url', movie.movie_url).maybeSingle();
   if (existing) {
     const updates = {};
     if (movie.genres && !existing.genres) updates.genres = movie.genres;
     if (movie.synopsis && !existing.synopsis) updates.synopsis = movie.synopsis;
     if (Object.keys(updates).length) {
-      await supabase.from('movies').update(updates).eq('movie_url', movie.movie_url);
+      await supabase.from('movies').update(updates).eq('id', existing.id);
     }
-  } else {
-    await supabase.from('movies').insert({
-      title: movie.title,
-      year: movie.year,
-      quality: movie.quality,
-      language: movie.language,
-      category: movie.category,
-      poster_url: movie.poster_url,
-      movie_url: movie.movie_url,
-      genres: movie.genres || null,
-      synopsis: movie.synopsis || null,
-    });
+    return;
   }
+
+  const { data: byTitle } = await supabase.from('movies').select('id, genres, synopsis, movie_url').ilike('title', movie.title).maybeSingle();
+  if (byTitle) {
+    const updates = { movie_url: movie.movie_url };
+    if (movie.genres && !byTitle.genres) updates.genres = movie.genres;
+    if (movie.synopsis && !byTitle.synopsis) updates.synopsis = movie.synopsis;
+    if (movie.poster_url) updates.poster_url = movie.poster_url;
+    await supabase.from('movies').update(updates).eq('id', byTitle.id);
+    return;
+  }
+
+  await supabase.from('movies').insert({
+    title: movie.title,
+    year: movie.year,
+    quality: movie.quality,
+    language: movie.language,
+    category: movie.category,
+    poster_url: movie.poster_url,
+    movie_url: movie.movie_url,
+    genres: movie.genres || null,
+    synopsis: movie.synopsis || null,
+  });
 }
 
 async function updateMovieDetail(movieUrl, genres, synopsis) {
